@@ -1,0 +1,48 @@
+# -----------------------------
+# Node modules
+# -----------------------------
+node_modules/
+npm-debug.log
+
+# -----------------------------
+# Environment variables
+# -----------------------------
+.env
+.env.local
+.env.*.local
+
+# -----------------------------
+# Hardhat build outputs
+# -----------------------------
+/artifacts/
+/cache/
+
+# -----------------------------
+# Hardhat TypeChain output
+# -----------------------------
+/typechain/
+/typechain-types/
+
+# -----------------------------
+# Coverage
+# -----------------------------
+/coverage/
+/coverage.json
+
+# -----------------------------
+# Frontend build output
+# (如果你後面有加前端)
+# -----------------------------
+/dist/
+/bundle/
+
+# -----------------------------
+# Ignition deployment data
+# （不應該推上 GitHub）
+# -----------------------------
+ignition/deployments/
+
+# -----------------------------
+# macOS system files
+# -----------------------------
+.DS_Store
