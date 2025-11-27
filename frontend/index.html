@@ -53,8 +53,13 @@
 
 <script>
 // 你真正部署的合約地址（永不變）
-const TOKEN_ADDRESS   = "0x5963BC9619124101fF10bC1B3663e5299189e9b1";
-const TRACKER_ADDRESS = "0x82a1A194D306F1978C790da347181bB09cE3b392";
+// const TOKEN_ADDRESS   = "0x5963BC9619124101fF10bC1B3663e5299189e9b1";
+// const TOKEN_ADDRESS   = "0x2a3f7bF3cacB5eB5131e40894e5030CFB19D6c9C";
+// const TRACKER_ADDRESS = "0x82a1A194D306F1978C790da347181bB09cE3b392";
+// const TRACKER_ADDRESS = "0x8759831c4E1885d394983325137Ddf5c8B12dD11";
+
+const TOKEN_ADDRESS   = "0xe365c19890Bd0B3Adb190E02033eA9ECEf9D43C5";
+const TRACKER_ADDRESS = "0x431112eF241dB1F39A1aA8281b2E9e47255cf5b8";
 
 // 精簡但完整的 ABI（只保留我們需要的函數）
 const TOKEN_ABI = [
@@ -126,7 +131,8 @@ document.getElementById("connectBtn").onclick = async () => {
 async function updateBalance() {
   if (!account) return;
   const bal = await tokenContract.balanceOf(account);
-  document.getElementById("balance").innerText = (bal / 1e18).toFixed(4);
+  // 1. 餘額顯示（一定要除以 1e18）
+document.getElementById("balance").innerText = (bal / 1e18).toFixed(6);
 }
 
 // 核心：上報用電並獲得獎勵
@@ -154,7 +160,7 @@ async function uploadData() {
     await tx.wait();
     document.getElementById("txStatus").innerHTML = "上鏈成功！已獲得 CARBON 獎勵";
 
-    log(`上報成功 | ${kwh} kWh | 綠電 ${green}% | 獎勵 ${(kwh * green * green / 1000).toFixed(2)} CARBON`);
+    log(`上報成功 | ${kwh.toFixed(2)} kWh | 綠電 ${green}% | 獎勵 ${(kwh * green * green / 1000).toFixed(4)} CARBON`);
 
     records.push({ time: new Date().toLocaleString(), kwh, green });
     updateBalance();
@@ -176,13 +182,14 @@ async function loadHistory() {
       const r = await trackerContract.records(i);
       if (r.user.toLowerCase() === account.toLowerCase()) {
         const kwh = Number(r.kWh) / 1e9;
-        const reward = Number(r.reward) / 1e18;
+        const realReward = Number(r.reward) / 1e18;
         records.push({
           time: new Date(r.timestamp * 1000).toLocaleString(),
           kwh: kwh,
-          green: Number(r.greenRatio)
+          green: Number(r.greenRatio),
+          realReward: realReward
         });
-        log(`載入歷史：${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${reward.toFixed(4)} CARBON`);
+        log(`載入歷史：${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${realReward.toFixed(6)} CARBON`);
       }
     }
     updateChart();
@@ -194,7 +201,7 @@ let chart;
 function updateChart() {
   const ctx = document.getElementById('myChart').getContext('2d');
   const labels = records.map(r => r.time.slice(5,16));
-  const rewards = records.map(r => (r.kwh * r.green * r.green / 1000).toFixed(2));
+  const rewards = records.map(r => r.realReward.toFixed(4));
 
   if (!chart) {
     chart = new Chart(ctx, {

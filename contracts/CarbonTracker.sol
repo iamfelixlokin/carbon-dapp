@@ -26,7 +26,14 @@ contract CarbonTracker {
 
         // Quadratic reward model
         // reward = (kWh * (greenRatio^2) / 1000) * 1e18
-        uint256 reward = (kWh * (greenRatio * greenRatio) / 1000) * 1e18;
+        // uint256 reward = (kWh * (greenRatio * greenRatio) / 1000) * 1e18;
+        // uint256 reward = kWh * greenRatio * greenRatio / 10000;   // 不再乘 1e18
+        // 舉例：10 kWh + 85% 綠電 → 10 × 85 × 85 ÷ 10000 = 72.25 顆（完美！）
+    
+        
+        // 標準公式：10 kWh + 100% 綠電 = 100 顆 CARBON
+        // kWh 是 1e9，greenRatio 是 0~100
+        uint256 reward = (kWh * greenRatio * greenRatio * 1e18) / 1e5 / 1e9;
 
         records.push(
             Record({

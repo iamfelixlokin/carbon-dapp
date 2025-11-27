@@ -10,9 +10,12 @@ contract CarbonToken is ERC20, Ownable {
         Ownable(initialOwner)
     {}
 
+    // 完全不用寫 decimals()，OpenZeppelin 預設就是 18！！
+    // function decimals() public pure override returns (uint8) {
+    //     return 18;
+    // }
+
     function mint(address to, uint256 amount) external onlyOwner {
         _mint(to, amount);
     }
 }
-
-
