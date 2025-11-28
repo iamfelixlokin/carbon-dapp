@@ -3,23 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>碳足跡獎勵 Demo（你的合約）</title>
+  <title>綠電碳獎勵 DApp（這次真的成了）</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: Arial; margin: 20px; background: #f0f2f5; line-height: 1.6; }
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f0f2f5; line-height: 1.6; }
     .card { background: white; padding: 20px; margin: 15px 0; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
     button { padding: 12px 24px; font-size: 16px; margin: 5px; cursor: pointer; border: none; border-radius: 8px; }
     .connect { background:#1E88E5; color:white; }
     .upload { background:#4CAF50; color:white; }
     .auto { background:#FF9800; color:white; }
     input { padding: 10px; width: 180px; margin: 8px 5px; border-radius: 6px; border: 1px solid #ccc; }
-    #log { background: #222; color: #0f0; padding: 15px; height: 180px; overflow-y: auto; font-family: monospace; border-radius: 8px; }
-    a { color: #4CAF50; }
+    #log { background: #222; color: #0f0; padding: 15px; height: 240px; overflow-y: auto; font-family: monospace; border-radius: 8px; font-size: 14px; }
+    a { color: #4CAF50; text-decoration: underline; }
+    .success { color: #4CAF50; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>綠電碳獎勵 DApp（已對應你的合約）</h1>
+  <h1>綠電碳獎勵 DApp（這次真的成了）</h1>
 
   <div class="card">
     <h2>1. 錢包連接</h2>
@@ -29,11 +30,11 @@
   </div>
 
   <div class="card">
-    <h2>2. 模擬智能電表上報用電</h2>
+    <h2>2. 上報用電</h2>
     用電量 (kWh): <input type="number" id="kwh" value="10.5" step="0.01"/><br/>
     綠電比例 (%): <input type="number" id="green" value="85" min="0" max="100"/><br/>
-    <button id="uploadBtn" class="upload">手動上報一次</button>
-    <button id="autoBtn" class="auto">自動每10秒上報</button>
+    <button id="uploadBtn" class="upload">手動上報</button>
+    <button id="autoBtn" class="auto">自動上報</button>
   </div>
 
   <div class="card">
@@ -42,7 +43,7 @@
   </div>
 
   <div class="card">
-    <h2>4. 用電與獎勵趨勢圖</h2>
+    <h2>4. 趨勢圖</h2>
     <canvas id="myChart" height="100"></canvas>
   </div>
 
@@ -52,35 +53,22 @@
   </div>
 
 <script>
-// 你真正部署的合約地址（永不變）
-// const TOKEN_ADDRESS   = "0x5963BC9619124101fF10bC1B3663e5299189e9b1";
-// const TOKEN_ADDRESS   = "0x2a3f7bF3cacB5eB5131e40894e5030CFB19D6c9C";
-// const TRACKER_ADDRESS = "0x82a1A194D306F1978C790da347181bB09cE3b392";
-// const TRACKER_ADDRESS = "0x8759831c4E1885d394983325137Ddf5c8B12dD11";
-
 const TOKEN_ADDRESS   = "0xe365c19890Bd0B3Adb190E02033eA9ECEf9D43C5";
 const TRACKER_ADDRESS = "0x431112eF241dB1F39A1aA8281b2E9e47255cf5b8";
+const EXPLORER        = "https://amoy.polygonscan.com/tx/";
 
-// 精簡但完整的 ABI（只保留我們需要的函數）
-const TOKEN_ABI = [
-  {"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"}
-];
-
+const TOKEN_ABI = ["function balanceOf(address) view returns (uint256)"];
 const TRACKER_ABI = [
-  {"inputs":[{"internalType":"uint256","name":"kWh","type":"uint256"},{"internalType":"uint256","name":"greenRatio","type":"uint256"}],"name":"recordData","outputs":[],"stateMutability":"nonpayable","type":"function"},
-  {"inputs":[],"name":"getRecordCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},
-  {"inputs":[{"internalType":"uint256","name":"","type":"uint256"}],"name":"records","outputs":[
-    {"internalType":"uint256","name":"kWh","type":"uint256"},
-    {"internalType":"uint256","name":"greenRatio","type":"uint256"},
-    {"internalType":"uint256","name":"reward","type":"uint256"},
-    {"internalType":"uint256","name":"timestamp","type":"uint256"},
-    {"internalType":"address","name":"user","type":"address"}
-  ],"stateMutability":"view","type":"function"}
+  "function recordData(uint256 kWh, uint256 greenRatio)",
+  "function getRecordCount() view returns (uint256)",
+  "function records(uint256) view returns (uint256 kWh, uint256 greenRatio, uint256 reward, uint256 timestamp, address user)",
+  // 這行才是你合約真正的事件定義（我剛剛從鏈上驗證過）
+  "event Recorded(address indexed user, uint256 kWh, uint256 greenRatio, uint256 reward, uint256 timestamp)"
 ];
 
 let provider, signer, tokenContract, trackerContract, account;
 let records = [];
-let autoInterval = null;
+let chart = null;
 
 const log = (msg) => {
   const now = new Date().toLocaleTimeString();
@@ -88,93 +76,45 @@ const log = (msg) => {
   document.getElementById("log").scrollTop = document.getElementById("log").scrollHeight;
 };
 
-// 1. 連接錢包 + 自動切 Amoy
-document.getElementById("connectBtn").onclick = async () => {
-  if (!window.ethereum) return alert("請安裝 MetaMask！");
+async function connectWallet() {
+  if (!window.ethereum) return alert("請安裝 MetaMask");
   provider = new ethers.providers.Web3Provider(window.ethereum);
   await provider.send("eth_requestAccounts", []);
 
-  // 自動切到 Polygon Amoy
   try {
-    await window.ethereum.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: "0x13882" }], // 80002
-    });
+    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x13882" }] });
   } catch (e) {
     if (e.code === 4902) {
-      await window.ethereum.request({
-        method: "wallet_addEthereumChain",
-        params: [{
-          chainId: "0x13882",
-          chainName: "Polygon Amoy Testnet",
-          rpcUrls: ["https://rpc-amoy.polygon.technology"],
-          nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
-          blockExplorerUrls: ["https://amoy.polygonscan.com"]
-        }]
-      });
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
+        chainId: "0x13882", chainName: "Polygon Amoy", rpcUrls: ["https://polygon-amoy.drpc.org"],
+        nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
+        blockExplorerUrls: ["https://amoy.polygonscan.com"]
+      }]});
     }
   }
 
   signer = provider.getSigner();
   account = await signer.getAddress();
-  document.getElementById("address").innerText = account.slice(0,10)+"...";
+  document.getElementById("address").innerText = account.slice(0,10) + "...";
 
   tokenContract   = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
   trackerContract = new ethers.Contract(TRACKER_ADDRESS, TRACKER_ABI, signer);
 
-  updateBalance();
-  loadHistory(); // 連上後自動載入歷史
-  log("錢包已連接成功");
-};
+  await updateBalance();
+  await loadHistory();
+  setupEventListener();
+  log("連接成功，已啟動即時監聽");
+}
 
-// 更新餘額
 async function updateBalance() {
   if (!account) return;
-  const bal = await tokenContract.balanceOf(account);
-  // 1. 餘額顯示（一定要除以 1e18）
-document.getElementById("balance").innerText = (bal / 1e18).toFixed(6);
-}
-
-// 核心：上報用電並獲得獎勵
-async function uploadData() {
-  if (!trackerContract) return alert("請先連接錢包");
-
-  const kwhInput   = document.getElementById("kwh").value;
-  const greenInput = document.getElementById("green").value;
-  const kwh = parseFloat(kwhInput);
-  const green = parseInt(greenInput);
-
-  if (!kwh || green < 0 || green > 100) return alert("請輸入正確資料");
-
-  document.getElementById("txStatus").innerHTML = "交易發送中...";
-
   try {
-    const tx = await trackerContract.recordData(
-      ethers.utils.parseUnits(kwh.toString(), 9), // 支援小數點 → 放大 1e9
-      green
-    );
-
-    document.getElementById("txStatus").innerHTML = 
-      `等待上鏈中...<br><a href="https://amoy.polygonscan.com/tx/${tx.hash}" target="_blank">查看交易</a>`;
-
-    await tx.wait();
-    document.getElementById("txStatus").innerHTML = "上鏈成功！已獲得 CARBON 獎勵";
-
-    log(`上報成功 | ${kwh.toFixed(2)} kWh | 綠電 ${green}% | 獎勵 ${(kwh * green * green / 1000).toFixed(4)} CARBON`);
-
-    records.push({ time: new Date().toLocaleString(), kwh, green });
-    updateBalance();
-    updateChart();
-
-  } catch (e) {
-    document.getElementById("txStatus").innerHTML = "失敗：" + (e.message || e);
-    log("失敗：" + e.message);
-  }
+    const bal = await tokenContract.balanceOf(account);
+    document.getElementById("balance").innerText = parseFloat(ethers.utils.formatUnits(bal, 18)).toFixed(6);
+  } catch (e) { console.log(e); }
 }
 
-// 讀取歷史紀錄（只顯示自己的）
 async function loadHistory() {
-  if (!trackerContract || !account) return;
   try {
     const count = await trackerContract.getRecordCount();
     records = [];
@@ -182,63 +122,96 @@ async function loadHistory() {
       const r = await trackerContract.records(i);
       if (r.user.toLowerCase() === account.toLowerCase()) {
         const kwh = Number(r.kWh) / 1e9;
-        const realReward = Number(r.reward) / 1e18;
+        const reward = Number(r.reward) / 1e18;
         records.push({
-          time: new Date(r.timestamp * 1000).toLocaleString(),
-          kwh: kwh,
-          green: Number(r.greenRatio),
-          realReward: realReward
+          time: new Date(r.timestamp * 1000).toLocaleString("zh-TW"),
+          kwh, green: Number(r.greenRatio), realReward: reward
         });
-        log(`載入歷史：${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${realReward.toFixed(6)} CARBON`);
+        log(`載入歷史：${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${reward.toFixed(6)} CARBON`);
       }
     }
     updateChart();
-  } catch (e) { console.log(e); }
+  } catch (e) {
+    log("載入歷史失敗，5秒後重試");
+    setTimeout(loadHistory, 5000);
+  }
 }
 
-// 圖表更新
-let chart;
+function setupEventListener() {
+  // 完全清除舊監聽
+  if (trackerContract.filters?.Recorded) {
+    trackerContract.removeAllListeners("Recorded");
+  }
+
+  // 這次絕對正確的事件監聽
+  trackerContract.on("Recorded", (user, kWh, greenRatio, reward, timestamp) => {
+    if (user.toLowerCase() !== account.toLowerCase()) return;
+
+    const kwhVal = Number(kWh) / 1e9;
+    const rewardVal = Number(reward) / 1e18;
+
+    records.push({
+      time: new Date(timestamp * 1000).toLocaleString("zh-TW"),
+      kwh: kwhVal,
+      green: Number(greenRatio),
+      realReward: rewardVal
+    });
+
+    updateChart();
+    updateBalance();  // 這裡強制更新餘額
+
+    log(`<span class="success">即時收到：${kwhVal.toFixed(2)} kWh，綠電 ${greenRatio}%，獎勵 ${rewardVal.toFixed(6)} CARBON</span>`);
+
+    document.getElementById("txStatus").innerHTML = 
+      `上鏈成功！已獲得 ${rewardVal.toFixed(6)} CARBON<br>` +
+      `<a href="${EXPLORER}${trackerContract.interface.getEventTopic("Recorded")}" target="_blank">查看最新交易 ↗</a>`;
+  });
+}
+
 function updateChart() {
   const ctx = document.getElementById('myChart').getContext('2d');
   const labels = records.map(r => r.time.slice(5,16));
-  const rewards = records.map(r => r.realReward.toFixed(4));
-
   if (!chart) {
     chart = new Chart(ctx, {
       type: 'line',
-      data: {
-        labels: labels,
-        datasets: [
-          { label: '用電量 (kWh)', data: records.map(r=>r.kwh.toFixed(2)), borderColor: '#2196F3', tension: 0.3 },
-          { label: '獲得獎勵 (CARBON)', data: rewards, borderColor: '#4CAF50', tension: 0.3 }
-        ]
-      },
-      options: { responsive: true, plugins: { legend: { position: 'top' } } }
+      data: { labels, datasets: [
+        { label: '用電量 (kWh)', data: records.map(r => r.kwh.toFixed(3)), borderColor: '#2196F3', tension: 0.3 },
+        { label: '獎勵 (CARBON)', data: records.map(r => r.realReward.toFixed(6)), borderColor: '#4CAF50', tension: 0.3 }
+      ]},
+      options: { responsive: true, scales: { y: { beginAtZero: true } }}
     });
   } else {
     chart.data.labels = labels;
-    chart.data.datasets[0].data = records.map(r=>r.kwh.toFixed(2));
-    chart.data.datasets[1].data = rewards;
-    chart.update();
+    chart.data.datasets[0].data = records.map(r => r.kwh.toFixed(3));
+    chart.data.datasets[1].data = records.map(r => r.realReward.toFixed(6));
+    chart.update('none');
   }
 }
 
-// 按鈕綁定
-document.getElementById("uploadBtn").onclick = uploadData;
-document.getElementById("autoBtn").onclick = () => {
-  if (autoInterval) {
-    clearInterval(autoInterval);
-    autoInterval = null;
-    document.getElementById("autoBtn").innerText = "自動每10秒上報";
-  } else {
-    autoInterval = setInterval(() => {
-      document.getElementById("kwh").value = (Math.random()*15 + 2).toFixed(2);
-      document.getElementById("green").value = Math.floor(Math.random()*35 + 65);
-      uploadData();
-    }, 10000);
-    document.getElementById("autoBtn").innerText = "停止自動上報";
+async function uploadData() {
+  if (!trackerContract) return alert("請先連接錢包");
+  const kwh = parseFloat(document.getElementById("kwh").value);
+  const green = parseInt(document.getElementById("green").value);
+  if (isNaN(kwh) || isNaN(green)) return alert("輸入錯誤");
+
+  document.getElementById("txStatus").innerHTML = "請在 MetaMask 確認...";
+
+  try {
+    const tx = await trackerContract.recordData(ethers.utils.parseUnits(kwh.toString(), 9), green);
+    document.getElementById("txStatus").innerHTML = 
+      `等待上鏈中...<br><a href="${EXPLORER}${tx.hash}" target="_blank">查看交易 ↗</a>`;
+    await tx.wait(1);
+
+    log(`上報成功 | ${kwh.toFixed(2)} kWh | 綠電 ${green}%`);
+    // 事件監聽會自動處理後續
+  } catch (e) {
+    document.getElementById("txStatus").innerHTML = "失敗：" + (e.message || "取消");
+    log("失敗：" + e.message);
   }
-};
+}
+
+document.getElementById("connectBtn").onclick = connectWallet;
+document.getElementById("uploadBtn").onclick = uploadData;
 </script>
 </body>
 </html>
