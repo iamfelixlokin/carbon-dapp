@@ -31,15 +31,15 @@
 
   <div class="card">
     <h2>2. 上報用電</h2>
-    用電量 (kWh): <input type="number" id="kwh" value="10.5" step="0.01"/><br/>
-    綠電比例 (%): <input type="number" id="green" value="85" min="0" max="100"/><br/>
-    <button id="uploadBtn" class="upload">手動上報</button>
-    <button id="autoBtn" class="auto">自動上報</button>
+    用電量 (kWh): <input type="number" id="kwh" step="0.01" placeholder="E.g.：10.5"/><br/>
+    綠電比例 (%): <input type="number" id="green" min="0" max="100" placeholder="E.g.：80"/><br/>
+    <button id="uploadBtn" class="upload">手動上報一次</button>
+    <button id="autoBtn" class="auto">自動每10秒上報</button>
   </div>
 
   <div class="card">
     <h2>3. 上鏈狀態</h2>
-    <div id="txStatus">等待操作...</div>
+    <div id="txStatus">等待上報用電資料...</div>
   </div>
 
   <div class="card">
@@ -52,7 +52,9 @@
     <div id="log">準備就緒</div>
   </div>
 
+
 <script>
+const STABLE_RPC = "https://polygon-amoy.drpc.org";  // 超穩節點，解決 -32080
 const TOKEN_ADDRESS   = "0xe365c19890Bd0B3Adb190E02033eA9ECEf9D43C5";
 const TRACKER_ADDRESS = "0x431112eF241dB1F39A1aA8281b2E9e47255cf5b8";
 const EXPLORER        = "https://amoy.polygonscan.com/tx/";
@@ -68,6 +70,7 @@ const TRACKER_ABI = [
 
 let provider, signer, tokenContract, trackerContract, account;
 let records = [];
+let latestTxHash = "";  // 關鍵！用來傳給事件監聽
 let chart = null;
 
 const log = (msg) => {
@@ -78,32 +81,43 @@ const log = (msg) => {
 
 async function connectWallet() {
   if (!window.ethereum) return alert("請安裝 MetaMask");
+
+  // 原本的 MetaMask provider（用來簽名）
   provider = new ethers.providers.Web3Provider(window.ethereum);
   await provider.send("eth_requestAccounts", []);
 
+  // 切換到 Amoy 網路（不變）
   try {
     await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x13882" }] });
   } catch (e) {
     if (e.code === 4902) {
-      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
-        chainId: "0x13882", chainName: "Polygon Amoy", rpcUrls: ["https://polygon-amoy.drpc.org"],
-        nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
-        blockExplorerUrls: ["https://amoy.polygonscan.com"]
-      }]});
+      await window.ethereum.request({
+        method: "wallet_addEthereumChain", params: [{
+          chainId: "0x13882", chainName: "Polygon Amoy", rpcUrls: [STABLE_RPC],
+          nativeCurrency: { name: "MATIC", symbol: "MATIC", decimals: 18 },
+          blockExplorerUrls: ["https://amoy.polygonscan.com"]
+        }]});
     }
   }
 
   signer = provider.getSigner();
   account = await signer.getAddress();
-  document.getElementById("address").innerText = account.slice(0,10) + "...";
+  document.getElementById("address").innerText = account;
 
-  tokenContract   = new ethers.Contract(TOKEN_ADDRESS, TOKEN_ABI, provider);
-  trackerContract = new ethers.Contract(TRACKER_ADDRESS, TRACKER_ABI, signer);
+  // 超穩節點（專門用來讀資料 + 監聽事件，絕對不會漏）
+  const stableProvider = new ethers.providers.JsonRpcProvider(STABLE_RPC);
+
+  // 全部改用超穩節點
+  tokenContract   = new ethers.Contract(TOKEN_ADDRESS,   TOKEN_ABI,   stableProvider);
+  trackerContract = new ethers.Contract(TRACKER_ADDRESS, TRACKER_ABI, stableProvider);
+
+  // 但發交易要簽名，所以再建一個有 signer 的版本
+  window.trackerWithSigner = trackerContract.connect(signer);
 
   await updateBalance();
   await loadHistory();
   setupEventListener();
-  log("連接成功，已啟動即時監聽");
+  log("連接成功，已啟用超穩節點（再也不會 -32080）");
 }
 
 async function updateBalance() {
@@ -123,11 +137,14 @@ async function loadHistory() {
       if (r.user.toLowerCase() === account.toLowerCase()) {
         const kwh = Number(r.kWh) / 1e9;
         const reward = Number(r.reward) / 1e18;
+        const recordTime = new Date(r.timestamp * 1000).toLocaleString("zh-TW");
+        
         records.push({
-          time: new Date(r.timestamp * 1000).toLocaleString("zh-TW"),
+          time: recordTime,
           kwh, green: Number(r.greenRatio), realReward: reward
         });
-        log(`載入歷史：${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${reward.toFixed(6)} CARBON`);
+        
+        log(`載入歷史 [${recordTime}] → ${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${reward.toFixed(6)} CARBON`);
       }
     }
     updateChart();
@@ -138,33 +155,34 @@ async function loadHistory() {
 }
 
 function setupEventListener() {
-  // 完全清除舊監聽
-  if (trackerContract.filters?.Recorded) {
-    trackerContract.removeAllListeners("Recorded");
-  }
+  trackerContract.removeAllListeners("Recorded");
 
-  // 這次絕對正確的事件監聽
   trackerContract.on("Recorded", (user, kWh, greenRatio, reward, timestamp) => {
     if (user.toLowerCase() !== account.toLowerCase()) return;
 
     const kwhVal = Number(kWh) / 1e9;
     const rewardVal = Number(reward) / 1e18;
+    const realTime = new Date(timestamp * 1000).toLocaleString("zh-TW");
 
     records.push({
-      time: new Date(timestamp * 1000).toLocaleString("zh-TW"),
+      time: realTime,
       kwh: kwhVal,
       green: Number(greenRatio),
       realReward: rewardVal
     });
 
     updateChart();
-    updateBalance();  // 這裡強制更新餘額
+    updateBalance();  // 強制更新餘額
 
-    log(`<span class="success">即時收到：${kwhVal.toFixed(2)} kWh，綠電 ${greenRatio}%，獎勵 ${rewardVal.toFixed(6)} CARBON</span>`);
+    // 正確顯示「即時收到」+ 完整時間 + 獎勵
+    log(`<span class="success">即時收到 [${realTime}] → ${kwhVal.toFixed(2)} kWh，綠電 ${greenRatio}%，獎勵 ${rewardVal.toFixed(6)} CARBON</span>`);
 
-    document.getElementById("txStatus").innerHTML = 
-      `上鏈成功！已獲得 ${rewardVal.toFixed(6)} CARBON<br>` +
-      `<a href="${EXPLORER}${trackerContract.interface.getEventTopic("Recorded")}" target="_blank">查看最新交易 ↗</a>`;
+    // 正確更新上鏈狀態 + 帶上真實交易連結
+        document.getElementById("txStatus").innerHTML = 
+      `<span style="color:#4CAF50">上鏈成功！已獲得 ${rewardVal.toFixed(6)} CARBON</span><br>` +
+      (latestTxHash ? `<a href="${EXPLORER}${latestTxHash}" target="_blank">查看交易 ↗</a>` : "");
+
+    latestTxHash = ""; // 用完清空，避免重複
   });
 }
 
@@ -189,7 +207,7 @@ function updateChart() {
 }
 
 async function uploadData() {
-  if (!trackerContract) return alert("請先連接錢包");
+  if (!window.trackerWithSigner) return alert("請先連接錢包");
   const kwh = parseFloat(document.getElementById("kwh").value);
   const green = parseInt(document.getElementById("green").value);
   if (isNaN(kwh) || isNaN(green)) return alert("輸入錯誤");
@@ -197,16 +215,21 @@ async function uploadData() {
   document.getElementById("txStatus").innerHTML = "請在 MetaMask 確認...";
 
   try {
-    const tx = await trackerContract.recordData(ethers.utils.parseUnits(kwh.toString(), 9), green);
+    const tx = await window.trackerWithSigner.recordData(
+      ethers.utils.parseUnits(kwh.toString(), 9), green
+    );
+    latestTxHash = tx.hash;  // 記住這筆交易
+
     document.getElementById("txStatus").innerHTML = 
       `等待上鏈中...<br><a href="${EXPLORER}${tx.hash}" target="_blank">查看交易 ↗</a>`;
-    await tx.wait(1);
 
+    await tx.wait(1);
     log(`上報成功 | ${kwh.toFixed(2)} kWh | 綠電 ${green}%`);
-    // 事件監聽會自動處理後續
+
   } catch (e) {
-    document.getElementById("txStatus").innerHTML = "失敗：" + (e.message || "取消");
+    document.getElementById("txStatus").innerHTML = "交易失敗：" + (e.message || "取消");
     log("失敗：" + e.message);
+    latestTxHash = "";
   }
 }
 
