@@ -17,6 +17,7 @@
     #log { background: #222; color: #0f0; padding: 15px; height: 240px; overflow-y: auto; font-family: monospace; border-radius: 8px; font-size: 14px; }
     a { color: #4CAF50; text-decoration: underline; }
     .success { color: #4CAF50; font-weight: bold; }
+    
   </style>
 </head>
 <body>
@@ -58,11 +59,11 @@
     <div style="display:flex; gap:40px; flex-wrap:wrap; justify-content:center;">
       <div style="flex:1; min-width:280px;">
         <h3>用電量 Top 10</h3>
-        <ol id="topKwh" style="font-size:15px; line-height:2;"></ol>
+        <ul id="topKwh" style="font-size:15px; line-height:2;"></ol>
       </div>
       <div style="flex:1; min-width:280px;">
         <h3>碳獎勵 Top 10</h3>
-        <ol id="topReward" style="font-size:15px; line-height:2;"></ol>
+        <ul id="topReward" style="font-size:15px; line-height:2;"></ol>
       </div>
     </div>
   </div>
@@ -141,12 +142,25 @@ async function connectWallet() {
   // await loadHistory();
   // setupEventListener();
   // log("連接成功，已啟動即時監聽");
-    await updateBalance();
-  await loadHistory();
-  setupEventListener();
-  await loadGlobalLeaderboard();   // ← 新增
-  setupGlobalWall();               // ← 新增
-  log("連接成功，已啟動即時監聽 + 全球排行榜");
+
+
+  //   await updateBalance();
+  // await loadHistory();
+  // setupEventListener();
+  // await loadGlobalLeaderboard();   // ← 新增
+  // setupGlobalWall();               // ← 新增
+  // log("連接成功，已啟動即時監聽 + 全球排行榜");
+
+    // 同時載入個人 + 全球（超快！）
+  Promise.all([
+    updateBalance(),
+    loadHistory(),
+    loadGlobalLeaderboard()
+  ]).then(() => {
+    setupEventListener();
+    setupGlobalWall();
+    log("全部載入完成！個人 + 全球排行榜已啟動（超快版）");
+  });
 }
 
 async function updateBalance() {
@@ -161,24 +175,34 @@ async function loadHistory() {
   try {
     const count = await trackerContract.getRecordCount();
     records = [];
-    for (let i = 0; i < count; i++) {
-      const r = await trackerContract.records(i);
+    const logLines = [];  // 先收集所有要顯示的文字
+
+        // 改成並行讀取（個人筆數少，幾乎瞬間完成）
+    const calls = [];
+    for (let i = 0; i < count; i++) calls.push(trackerContract.records(i));
+    const allRecords = await Promise.all(calls);
+
+    for (const r of allRecords) {
       if (r.user.toLowerCase() === account.toLowerCase()) {
         const kwh = Number(r.kWh) / 1e9;
         const reward = Number(r.reward) / 1e18;
         const recordTime = new Date(r.timestamp * 1000).toLocaleString("zh-TW");
-        
-        records.push({
-          time: recordTime,
-          kwh, green: Number(r.greenRatio), realReward: reward
-        });
-        
-        log(`載入歷史 [${recordTime}] → ${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${reward.toFixed(6)} CARBON`);
+
+        records.push({ time: recordTime, kwh, green: Number(r.greenRatio), realReward: reward });
+        logLines.push(`載入歷史 [${recordTime}] → ${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${reward.toFixed(6)} CARBON`);
       }
     }
+
+    // 全部收集完，一次性寫入（超快！）
+    if (logLines.length > 0) {
+      document.getElementById("log").innerHTML += "<br>" + logLines.join("<br>");
+      document.getElementById("log").scrollTop = document.getElementById("log").scrollHeight;
+    }
+
     updateChart();
+
   } catch (e) {
-    log("載入歷史失敗，5秒後重試");
+    log("載入個人歷史失敗，5秒後重試");
     setTimeout(loadHistory, 5000);
   }
 }
@@ -268,17 +292,27 @@ document.getElementById("uploadBtn").onclick = uploadData;
 // ==== 新增：全球排行榜 & 歷史牆（不影響原本個人功能）====
 let globalRecords = [];  //  // 儲存所有人的紀錄
 
-// 首次載入全球資料（任何人打開都看得到）
+// 極速版全球排行榜（3秒內載入完畢） ← 這行一定要有這句註解才對！）
 async function loadGlobalLeaderboard() {
+  const wall = document.getElementById("globalWall");
+  wall.innerHTML = "正在用核彈速度載入全球資料（最快 3 秒）...";
+
   try {
     const count = await trackerContract.getRecordCount();
-    const totals = {};  // address => {kwh, reward, greenAvg}
-    // 計算平均綠電比例
+    if (count === 0) {
+      wall.innerHTML = "目前還沒有上報紀錄～";
+      return;
+    }
 
+    // 超快並行讀取
+    const calls = [];
+    for (let i = 0; i < count; i++) calls.push(trackerContract.records(i));
+    const allRecords = await Promise.all(calls);
+
+    const totals = {};
     globalRecords = [];
 
-    for (let i = 0; i < count; i++) {
-      const r = await trackerContract.records(i);
+    allRecords.forEach(r => {
       const kwh = Number(r.kWh) / 1e9;
       const reward = Number(r.reward) / 1e18;
       const addr = r.user.toLowerCase();
@@ -288,7 +322,7 @@ async function loadGlobalLeaderboard() {
         short: r.user.slice(0,6) + "..." + r.user.slice(-4),
         kwh, reward,
         green: Number(r.greenRatio),
-        time: new Date(r.timestamp * 1000).toLocaleTimeString()
+        time: new Date(r.timestamp * 1000).toLocaleString("zh-TW")  // 完整日期
       });
 
       if (!totals[addr]) totals[addr] = {addr: r.user, kwh:0, reward:0, count:0, greenSum:0};
@@ -296,10 +330,9 @@ async function loadGlobalLeaderboard() {
       totals[addr].reward += reward;
       totals[addr].greenSum += Number(r.greenRatio);
       totals[addr].count += 1;
-    }
+    });
 
-    // 更新全球牆（最新 50 筆）
-    const wall = document.getElementById("globalWall");
+    // 全球牆
     wall.innerHTML = "";
     globalRecords.slice(-50).reverse().forEach(r => {
       const isMe = account && r.addr.toLowerCase() === account.toLowerCase();
@@ -309,23 +342,24 @@ async function loadGlobalLeaderboard() {
       wall.prepend(line);
     });
 
-    // 更新排行榜
+    // 正確排行榜（絕對不會重複！）
     const arr = Object.values(totals);
     arr.forEach(t => t.greenAvg = (t.greenSum / t.count).toFixed(1));
 
-    arr.sort((a,b) => b.kwh - a.kwh);
-    document.getElementById("topKwh").innerHTML = arr.slice(0,10).map((t,i) =>
-      `<li>${i+1}. ${t.addr.slice(0,6)}...${t.addr.slice(-4)} — <strong>${t.kwh.toFixed(2)} kWh</strong>（平均綠電 ${t.greenAvg}%）</li>`
-    ).join("");
+    const topByKwh = [...arr].sort((a,b) => b.kwh - a.kwh);
+    document.getElementById("topKwh").innerHTML = topByKwh.slice(0,10).map((t,i) =>
+  `<li>${i+1}. ${t.addr.slice(0,6)}...${t.addr.slice(-4)} — <strong>${t.kwh.toFixed(2)} kWh</strong>（平均綠電 ${t.greenAvg}%）</li>`
+).join("");
 
-    arr.sort((a,b) => b.reward - a.reward);
-    document.getElementById("topReward").innerHTML = arr.slice(0,10).map((t,i) =>
+    const topByReward = [...arr].sort((a,b) => b.reward - a.reward);
+    document.getElementById("topReward").innerHTML = topByReward.slice(0,10).map((t,i) => 
       `<li>${i+1}. ${t.addr.slice(0,6)}...${t.addr.slice(-4)} — <strong>${t.reward.toFixed(4)} CARBON</strong></li>`
     ).join("");
 
   } catch (e) {
-    console.log("全球排行榜載入失敗，10秒後重試", e);
-    setTimeout(loadGlobalLeaderboard, 10000);
+    wall.innerHTML = "載入失敗，8 秒後重試...";
+    console.log(e);
+    setTimeout(loadGlobalLeaderboard, 8000);
   }
 }
 
@@ -335,7 +369,7 @@ function setupGlobalWall() {
     const kwh = Number(kWh)/1e9;
     const rew = Number(reward)/1e18;
     const short = user.slice(0,6)+"..."+user.slice(-4);
-    const time = new Date(timestamp*1000).toLocaleTimeString();
+    const time = new Date(timestamp*1000).toLocaleString("zh-TW");  // 改這行！
     const isMe = account && user.toLowerCase() === account.toLowerCase();
 
     const line = document.createElement("div");
