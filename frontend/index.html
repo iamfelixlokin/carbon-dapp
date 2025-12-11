@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>綠電碳獎勵 DApp（這次真的成了）</title>
+  <title>Green Power Carbon Rewards DApp</title>
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -21,48 +21,48 @@
   </style>
 </head>
 <body>
-  <h1>綠電碳獎勵 DApp（可顯示個人wallet 和 global 數據）</h1>
+  <h1>Green Power Carbon Rewards DApp</h1>
 
   <div class="card">
-    <h2>1. 錢包連接</h2>
+    <h2>Wallet Connection</h2>
     <button id="connectBtn" class="connect">Connect MetaMask</button>
-    <p>錢包地址: <span id="address">-</span></p>
-    <p>碳代幣餘額: <span id="balance">0</span> CARBON</p>
+    <p>Wallet Address: <span id="address">-</span></p>
+    <p>CARBON Balance: <span id="balance">0</span> CARBON</p>
   </div>
 
   <div class="card">
-    <h2>2. 上報用電</h2>
-    用電量 (kWh): <input type="number" id="kwh" step="0.01" placeholder="E.g.：10.5"/><br/>
-    綠電比例 (%): <input type="number" id="green" min="0" max="100" placeholder="E.g.：80"/><br/>
-    <button id="uploadBtn" class="upload">手動上報一次</button>
-    <button id="autoBtn" class="auto">自動每10秒上報</button>
+    <h2>Report Electricity Usage</h2>
+    Energy Used (kWh): <input type="number" id="kwh" step="0.01" placeholder="E.g.：10.5"/><br/>
+    Green Energy Ratio (%): <input type="number" id="green" min="0" max="100" placeholder="E.g.：80"/><br/>
+    <button id="uploadBtn" class="upload">Report Once</button>
+    <button id="autoBtn" class="auto">Auto Report Every 10s</button>
   </div>
 
   <div class="card">
-    <h2>3. 上鏈狀態</h2>
-    <div id="txStatus">等待上報用電資料...</div>
+    <h2>Transaction Status</h2>
+    <div id="txStatus">Waiting for report...</div>
   </div>
 
   <div class="card">
-    <h2>4. 趨勢圖</h2>
+    <h2>Energy & Reward Trend Chart</h2>
     <canvas id="myChart" height="100"></canvas>
   </div>
 
   <div class="card">
-    <h2>5. 個人上報日誌</h2>
-    <div id="log">準備就緒</div>
+    <h2>Your Report Log</h2>
+    <div id="log">Ready...</div>
   </div>
 
     <!-- 新增：全球排行榜 -->
   <div class="card">
-    <h2>6. 全球綠電貢獻排行榜（即時更新）</h2>
+    <h2>Global Green Power Leaderboard (Real-time)</h2>
     <div style="display:flex; gap:40px; flex-wrap:wrap; justify-content:center;">
       <div style="flex:1; min-width:280px;">
-        <h3>用電量 Top 10</h3>
+        <h3>Top 10 Energy Usage</h3>
         <ul id="topKwh" style="font-size:15px; line-height:2;"></ol>
       </div>
       <div style="flex:1; min-width:280px;">
-        <h3>碳獎勵 Top 10</h3>
+        <h3>Top 10 Carbon Rewards</h3>
         <ul id="topReward" style="font-size:15px; line-height:2;"></ol>
       </div>
     </div>
@@ -70,9 +70,9 @@
 
   <!-- 新增：全球歷史牆（所有人可見） -->
   <div class="card">
-    <h2>7. 全球上報紀錄（最新 50 筆，即時滾動）</h2>
+    <h2>Global Report History (Latest 50, Real-time)</h2>
     <div id="globalWall" style="background:#111; color:#0f9; padding:15px; height:300px; overflow-y:auto; font-family:monospace; font-size:14px; border-radius:8px; line-height:1.8;">
-      載入中...
+      Loading global data...
     </div>
   </div>
 
@@ -104,7 +104,7 @@ const log = (msg) => {
 };
 
 async function connectWallet() {
-  if (!window.ethereum) return alert("請安裝 MetaMask");
+  if (!window.ethereum) return alert("Please Install MetaMask");
 
   // 原本的 MetaMask provider（用來簽名）
   provider = new ethers.providers.Web3Provider(window.ethereum);
@@ -159,7 +159,7 @@ async function connectWallet() {
   ]).then(() => {
     setupEventListener();
     setupGlobalWall();
-    log("全部載入完成！個人 + 全球排行榜已啟動（超快版）");
+    log("Loading complete! Individual and global leaderboards are now live.");
   });
 }
 
@@ -189,7 +189,7 @@ async function loadHistory() {
         const recordTime = new Date(r.timestamp * 1000).toLocaleString("zh-TW");
 
         records.push({ time: recordTime, kwh, green: Number(r.greenRatio), realReward: reward });
-        logLines.push(`載入歷史 [${recordTime}] → ${kwh.toFixed(2)} kWh，綠電 ${r.greenRatio}%，獎勵 ${reward.toFixed(6)} CARBON`);
+        logLines.push(`Recorded in history [${recordTime}] → ${kwh.toFixed(2)} kWh，Green Power ${r.greenRatio}%，Reward ${reward.toFixed(6)} CARBON`);
       }
     }
 
@@ -202,7 +202,7 @@ async function loadHistory() {
     updateChart();
 
   } catch (e) {
-    log("載入個人歷史失敗，5秒後重試");
+    log("Loading personal history failed, will try again in 5 seconds.");
     setTimeout(loadHistory, 5000);
   }
 }
@@ -228,12 +228,12 @@ function setupEventListener() {
     updateBalance();  // 強制更新餘額
 
     // 正確顯示「即時收到」+ 完整時間 + 獎勵
-    log(`<span class="success">即時收到 [${realTime}] → ${kwhVal.toFixed(2)} kWh，綠電 ${greenRatio}%，獎勵 ${rewardVal.toFixed(6)} CARBON</span>`);
+    log(`<span class="success">Receive instantly [${realTime}] → ${kwhVal.toFixed(2)} kWh，Green Power ${greenRatio}%，Reward ${rewardVal.toFixed(6)} CARBON</span>`);
 
     // 正確更新上鏈狀態 + 帶上真實交易連結
         document.getElementById("txStatus").innerHTML = 
-      `<span style="color:#4CAF50">上鏈成功！已獲得 ${rewardVal.toFixed(6)} CARBON</span><br>` +
-      (latestTxHash ? `<a href="${EXPLORER}${latestTxHash}" target="_blank">查看交易 ↗</a>` : "");
+      `<span style="color:#4CAF50">Successfully uploaded to the blockchain! Acquired. ${rewardVal.toFixed(6)} CARBON</span><br>` +
+      (latestTxHash ? `<a href="${EXPLORER}${latestTxHash}" target="_blank">View transactions ↗</a>` : "");
 
     latestTxHash = ""; // 用完清空，避免重複
   });
@@ -246,8 +246,8 @@ function updateChart() {
     chart = new Chart(ctx, {
       type: 'line',
       data: { labels, datasets: [
-        { label: '用電量 (kWh)', data: records.map(r => r.kwh.toFixed(3)), borderColor: '#2196F3', tension: 0.3 },
-        { label: '獎勵 (CARBON)', data: records.map(r => r.realReward.toFixed(6)), borderColor: '#4CAF50', tension: 0.3 }
+        { label: 'Electricity consumption (kWh)', data: records.map(r => r.kwh.toFixed(3)), borderColor: '#2196F3', tension: 0.3 },
+        { label: 'Reward (CARBON)', data: records.map(r => r.realReward.toFixed(6)), borderColor: '#4CAF50', tension: 0.3 }
       ]},
       options: { responsive: true, scales: { y: { beginAtZero: true } }}
     });
@@ -260,12 +260,12 @@ function updateChart() {
 }
 
 async function uploadData() {
-  if (!window.trackerWithSigner) return alert("請先連接錢包");
+  if (!window.trackerWithSigner) return alert("Please connect your wallet first.");
   const kwh = parseFloat(document.getElementById("kwh").value);
   const green = parseInt(document.getElementById("green").value);
-  if (isNaN(kwh) || isNaN(green)) return alert("輸入錯誤");
+  if (isNaN(kwh) || isNaN(green)) return alert("Input error");
 
-  document.getElementById("txStatus").innerHTML = "請在 MetaMask 確認...";
+  document.getElementById("txStatus").innerHTML = "Please confirm in MetaMask...";
 
   try {
     const tx = await window.trackerWithSigner.recordData(
@@ -274,14 +274,14 @@ async function uploadData() {
     latestTxHash = tx.hash;  // 記住這筆交易
 
     document.getElementById("txStatus").innerHTML = 
-      `等待上鏈中...<br><a href="${EXPLORER}${tx.hash}" target="_blank">查看交易 ↗</a>`;
+      `Waiting to be added to the blockchain...<br><a href="${EXPLORER}${tx.hash}" target="_blank">View Transaction ↗</a>`;
 
     await tx.wait(1);
-    log(`上報成功 | ${kwh.toFixed(2)} kWh | 綠電 ${green}%`);
+    log(`Report successful | ${kwh.toFixed(2)} kWh | Green Power ${green}%`);
 
   } catch (e) {
-    document.getElementById("txStatus").innerHTML = "交易失敗：" + (e.message || "取消");
-    log("失敗：" + e.message);
+    document.getElementById("txStatus").innerHTML = "Transaction failed：" + (e.message || "Cancel");
+    log("Failed：" + e.message);
     latestTxHash = "";
   }
 }
@@ -295,12 +295,12 @@ let globalRecords = [];  //  // 儲存所有人的紀錄
 // 極速版全球排行榜（3秒內載入完畢） ← 這行一定要有這句註解才對！）
 async function loadGlobalLeaderboard() {
   const wall = document.getElementById("globalWall");
-  wall.innerHTML = "正在用核彈速度載入全球資料（最快 3 秒）...";
+  wall.innerHTML = "Loading global data";
 
   try {
     const count = await trackerContract.getRecordCount();
     if (count === 0) {
-      wall.innerHTML = "目前還沒有上報紀錄～";
+      wall.innerHTML = "There are no reported records yet.";
       return;
     }
 
@@ -322,7 +322,15 @@ async function loadGlobalLeaderboard() {
         short: r.user.slice(0,6) + "..." + r.user.slice(-4),
         kwh, reward,
         green: Number(r.greenRatio),
-        time: new Date(r.timestamp * 1000).toLocaleString("zh-TW")  // 完整日期
+        time: new Date(r.timestamp * 1000).toLocaleString("en-GB", {
+  year: 'numeric',
+  month: 'short',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false
+})
       });
 
       if (!totals[addr]) totals[addr] = {addr: r.user, kwh:0, reward:0, count:0, greenSum:0};
@@ -337,7 +345,7 @@ async function loadGlobalLeaderboard() {
     globalRecords.slice(-50).reverse().forEach(r => {
       const isMe = account && r.addr.toLowerCase() === account.toLowerCase();
       const line = document.createElement("div");
-      line.innerHTML = `[${r.time}] <strong>${r.short}</strong> 上報 ${r.kwh.toFixed(2)} kWh（綠電 ${r.green}%） → 獲得 ${r.reward.toFixed(6)} CARBON`;
+      line.innerHTML = `[${r.time}] <strong>${r.short}</strong> Report ${r.kwh.toFixed(2)} kWh（Green Power ${r.green}%） → Reward ${r.reward.toFixed(6)} CARBON`;
       if (isMe) line.style = "color:#4CAF50; font-weight:bold;";
       wall.prepend(line);
     });
@@ -348,7 +356,7 @@ async function loadGlobalLeaderboard() {
 
     const topByKwh = [...arr].sort((a,b) => b.kwh - a.kwh);
     document.getElementById("topKwh").innerHTML = topByKwh.slice(0,10).map((t,i) =>
-  `<li>${i+1}. ${t.addr.slice(0,6)}...${t.addr.slice(-4)} — <strong>${t.kwh.toFixed(2)} kWh</strong>（平均綠電 ${t.greenAvg}%）</li>`
+  `<li>${i+1}. ${t.addr.slice(0,6)}...${t.addr.slice(-4)} — <strong>${t.kwh.toFixed(2)} kWh</strong>（Avg. Green Power ${t.greenAvg}%）</li>`
 ).join("");
 
     const topByReward = [...arr].sort((a,b) => b.reward - a.reward);
@@ -357,7 +365,7 @@ async function loadGlobalLeaderboard() {
     ).join("");
 
   } catch (e) {
-    wall.innerHTML = "載入失敗，8 秒後重試...";
+    wall.innerHTML = "Loading failed, will try again in 8 seconds...";
     console.log(e);
     setTimeout(loadGlobalLeaderboard, 8000);
   }
@@ -369,11 +377,14 @@ function setupGlobalWall() {
     const kwh = Number(kWh)/1e9;
     const rew = Number(reward)/1e18;
     const short = user.slice(0,6)+"..."+user.slice(-4);
-    const time = new Date(timestamp*1000).toLocaleString("zh-TW");  // 改這行！
+   const time = new Date(timestamp*1000).toLocaleString("en-GB", {
+  year: 'numeric', month: 'short', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+});
     const isMe = account && user.toLowerCase() === account.toLowerCase();
 
     const line = document.createElement("div");
-    line.innerHTML = `[${time}] <strong>${short}</strong> 上報 ${kwh.toFixed(2)} kWh（綠電 ${greenRatio} %） → 獲得 ${rew.toFixed(6)} CARBON`;
+    line.innerHTML = `[${time}] <strong>${short}</strong> Report ${kwh.toFixed(2)} kWh（Green Power ${greenRatio} %） → Reward ${rew.toFixed(6)} CARBON`;
     if (isMe) line.style = "color:#4CAF50; font-weight:bold;";
     document.getElementById("globalWall").prepend(line);
   });
